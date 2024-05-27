@@ -14,38 +14,22 @@ import json
 volume = {}
 address = []
 
-def get_proxies() -> list:
-
-    if os.path.isfile("proxy_list.txt"):
-        with open('proxy_list.txt', 'r') as file:
-            proxies = file.readlines()
-        return proxies
-
-    response = requests.get("https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/all/data.txt")
-    if response.status_code == 200:
-        return response.text.split('\n')
-    else:
-        send_error(f"requesting Proxy error {response.status_code}")
-
-def trend_token(token, ma, proxy_list):
+def trend_token(token, ma) -> pd.DataFrame:
     df = pd.DataFrame()
-    for proxy in proxy_list:
-        try:
-            # Increase retries and timeout settings
-            pytrend = TrendReq(proxies=[f"https://{proxy}"], retries=1, backoff_factor=0.1)
-            pytrend.build_payload(kw_list=token, timeframe='today 1-m')
-            df = pytrend.interest_over_time().tail(ma * 2)
-            if not df.empty:
-                df = df[token]
-                print(df)
-                return df  # Return if successful
-            else:
-                send_error(f"df is empty: {token}")
-                break  # If df is empty, no need to try other proxies
+    try:
+        pytrend = TrendReq()
+        pytrend.build_payload(kw_list=token, timeframe='today 1-m')
+        df = pytrend.interest_over_time().tail(ma * 2)
+        if not df.empty:
+            df = df[token]
+            print(df)
+        else:
+            send_error(f"df is empty: {token}")
 
-        except Exception as e:
-            print(e)
-            send_error(f"ERROR PASS: {token}, {e}")
+    except Exception as e:
+        print(e)
+        send_error(f"ERROR PASS: {token}, {e}")
+        pass
 
     return df
 
@@ -119,7 +103,7 @@ def send_error(error):
         send_error(f"ERROR send_error:{e}")
         pass
 
-def gtrend_main(proxies):
+def gtrend_main():
     with open("ray_vol.json", "r") as f:
         volume = json.load(f)
 
@@ -130,18 +114,14 @@ def gtrend_main(proxies):
     for k in range(len(Tokenlist)):
         Tokenlist[k] = Tokenlist[k] + " token"
 
-    df = trend_token(["solana"], ma, proxies[-1])
+    df = trend_token(["solana"], ma)
     
     for sec in tqdm(range(sleep)):
         time.sleep(1)
 
-    return
-
     for i in range(len(Tokenlist)):
-        proxy_list = proxies[i:i+3] if i < len(proxies)-1 else proxies[i%len(proxies):i%len(proxies)+3]
-
         print(Tokenlist[i])
-        df2 = trend_token([Tokenlist[i]], ma=ma, proxy_list=proxy_list)
+        df2 = trend_token([Tokenlist[i]], ma=ma)
         
         for sec in tqdm(range(sleep)):
             time.sleep(1)
@@ -156,7 +136,7 @@ def gtrend_main(proxies):
             send_tg(msg)
 
             print(f"{i + 1} is done")
-            df = trend_token(["solana"], ma, proxies[-1])
+            df = trend_token(["solana"], ma)
             for sec in tqdm(range(sleep*2)):
                 time.sleep(1)
             
@@ -259,7 +239,7 @@ if "__main__" == __name__:
     # google
     ma = 3
     threshold = 1
-    sleep = 10
+    sleep = 60
 
     # volume
     Vol     = True
@@ -267,11 +247,9 @@ if "__main__" == __name__:
     mp_mode = True
 
     #####################################
-    
+
     while (True):
         # now = datetime.datetime.now()
         # if (now.hour == 0 and now.minute == 0):
-            proxies = get_proxies()
-            # fetch_vol(volume)
-            gtrend_main(proxies=proxies)
-            break
+            fetch_vol(volume)
+            gtrend_main()
